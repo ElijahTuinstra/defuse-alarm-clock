@@ -1,0 +1,4 @@
+Firmware/.pio/
+Firmware/.vscode/
+Firmware/include/wifi-info.h
+Firmware/other-code/
