@@ -96,19 +96,32 @@ void clearScreen() {
 
 void displayClock() {
     if (clockMode == 0) {
-            tft.setTextSize(8);
-            if (lastMinute != minutes) { //this if loop lets the screen not try to reprint the time when it doesn't need to
-            clearScreen();
+        tft.setTextSize(8);
+        if (lastMinute != minutes) { //this if function lets the screen not try to reprint the time when it doesn't need to
+            tft.setCursor(10, 10);
+            tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK); 
             tft.printf("%02d:%02d\n", hours, minutes);
-            lastMinute = minutes;
+        lastMinute = minutes;
         }
     } else if (clockMode == 1) {
             tft.setTextSize(5);
-            if (lastSecond != seconds) { //this if loop lets the screen not try to reprint the time when it doesn't need to
-            clearScreen();
-            tft.printf("%02d:%02d:%02d\n", hours, minutes, seconds);
-            lastSecond = seconds;
+            if (lastSecond != seconds) { //this if function lets the screen not try to reprint the time when it doesn't need to
+                tft.setCursor(10, 10);
+                tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK); 
+                tft.printf("%02d:%02d:%02d\n", hours, minutes, seconds);
+                lastSecond = seconds;
         }
+    }
+}
+
+void changeClockMode() {
+    clearScreen();
+    if (clockMode == 0) {
+        clockMode = 1;
+        lastSecond = -1;
+    } else if (clockMode == 1) {
+        clockMode = 0;
+        lastMinute = -1;
     }
 }
 
@@ -140,34 +153,11 @@ void setup() {
 }
 
 void loop() {
-    //displayClock();
+    displayClock();
 
-    for (int i = 0; i < NUM_BUTTONS; i++) {
-        if (isButtonPress(clockButtons[i])) {
-            clearScreen();
-            tft.setTextSize(3);            
-            tft.printf("%s was pressed!\n", clockButtons[i].name);
-            delay(50);
-        }
-    }
-
-    /*
     bool currentModeBtnState = digitalRead(BUTTON1);
     if (currentModeBtnState == LOW && pastBM1 == HIGH) {
-        if (clockMode == 0) {
-            clearScreen();
-            tft.printf("%02d:%02d:%02d\n", hours, minutes, seconds);
-            tft.printf("%02d:%02d\n", hours, minutes);
-            clockMode = 1;
-        } else if (clockMode == 1) {
-            clearScreen();
-            tft.printf("%02d:%02d\n", hours, minutes);
-            clockMode = 0;
-        }
-        Serial.println("Button was pressed!");
-        delay(200);
+        changeClockMode();
     }
-
     pastBM1 = currentModeBtnState;
-    */
 }
