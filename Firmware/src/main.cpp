@@ -37,7 +37,20 @@ volatile int minutes = 0;
 volatile int hours = 0;
 int lastSecond = -1;
 int lastMinute = -1;
-int clockMode = 0;
+int lastHour = -1;
+int displayMode = 0;
+bool setupComplete = false;
+bool timeSet = false;
+const char* timeUnits[] = {"Hours", "Minutes", "Seconds"};
+int timeUnitsListSize = sizeof(timeUnits) / sizeof(timeUnits[0]);
+enum Mode { HOURS, MINUTES, SECONDS };
+Mode clockMode = HOURS;
+
+struct SetupResult {
+  int updatedValue;
+  bool unitFinished;
+};
+
 
 Ticker clockTicker;
 
@@ -72,7 +85,8 @@ Button clockButtons[] = {
 
 const int NUM_BUTTONS = sizeof(clockButtons) / sizeof(clockButtons[0]);
 
-bool isButtonPress(Button& button) {
+
+bool buttonPressed(Button& button) {
     bool currentState = digitalRead(button.pin);
     bool triggered = false;
 
@@ -85,43 +99,181 @@ bool isButtonPress(Button& button) {
     return triggered;
 }
 
-void startUpMessage() {
-    tft.print("ouu shii");
+bool anyButtonPressed() {
+  for (int i = 0; i < NUM_BUTTONS; i++) {
+    if (buttonPressed(clockButtons[i])) {
+      return true;
+    }
+  }
+  return false;
 }
 
-void clearScreen() {
+Button* whichButtonPressed() {
+  for (int i = 0; i < NUM_BUTTONS; i++) {
+    if (buttonPressed(clockButtons[i])) {
+      return &clockButtons[i];
+    }
+  } 
+  return NULL;
+}
+
+void resetScreen() {
     tft.fillScreen(ST77XX_BLACK);
     tft.setCursor(10,10);
 }
 
+void printHourMinute() {
+    tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK); 
+    tft.setTextSize(8);
+    tft.printf("%02d:%02d\n", hours, minutes);
+}
+
+void printHourMinuteSecond() {
+    tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+    tft.setTextSize(5);
+    tft.printf("%02d:%02d:%02d\n", hours, minutes, seconds);
+}
+
 void displayClock() {
-    if (clockMode == 0) {
-        tft.setTextSize(8);
+    if (displayMode == 0) {
         if (lastMinute != minutes) { //this if function lets the screen not try to reprint the time when it doesn't need to
             tft.setCursor(10, 10);
-            tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK); 
-            tft.printf("%02d:%02d\n", hours, minutes);
-        lastMinute = minutes;
+            printHourMinute();
+            lastMinute = minutes;
         }
-    } else if (clockMode == 1) {
-            tft.setTextSize(5);
-            if (lastSecond != seconds) { //this if function lets the screen not try to reprint the time when it doesn't need to
-                tft.setCursor(10, 10);
-                tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK); 
-                tft.printf("%02d:%02d:%02d\n", hours, minutes, seconds);
-                lastSecond = seconds;
+    } else if (displayMode == 1) {
+        if (lastSecond != seconds) { //this if function lets the screen not try to reprint the time when it doesn't need to
+            tft.setCursor(10, 10);
+            printHourMinuteSecond();
+            lastSecond = seconds;
         }
     }
 }
 
 void changeClockMode() {
-    clearScreen();
-    if (clockMode == 0) {
-        clockMode = 1;
-        lastSecond = -1;
-    } else if (clockMode == 1) {
-        clockMode = 0;
-        lastMinute = -1;
+    resetScreen();
+    if (displayMode == 0) {
+        displayMode = 1;
+        resetScreen();
+        printHourMinuteSecond();
+    } else if (displayMode == 1) {
+        displayMode = 0;
+        resetScreen();
+        printHourMinute();
+    }
+}
+
+SetupResult chooseSetUnitOfTime(int valueOfUnitOfMeasurement, const char* labelUnitOfMeasurement, Mode targetedMode) {
+    SetupResult result;
+
+    resetScreen();
+    tft.setTextSize(1);
+    tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+    tft.printf("Set %s. 1 to decrease, 2 to increase, 5 to confirm.", labelUnitOfMeasurement);
+    tft.println(); 
+    tft.println();    
+    int cursorX = tft.getCursorX();
+    int cursorY = tft.getCursorY();
+
+
+    int maxValue = 60;
+    int lastValue = -1;
+
+    int localValue = valueOfUnitOfMeasurement;
+
+    switch(targetedMode) {
+        case HOURS:
+            maxValue = 24;
+            lastValue = hours;
+            break;
+
+        case MINUTES:
+            maxValue = 60;
+            lastValue = minutes;
+            break;
+
+        case SECONDS:
+            maxValue = 60;
+            lastValue = seconds;
+            break;
+    }
+
+    lastValue = -1;
+
+    bool unitSet = false;
+    while(!unitSet){
+        if(localValue != lastValue) {
+            tft.setCursor(cursorX, cursorY);
+            tft.setTextSize(3);
+            tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+            tft.printf("%s:%02d    ", labelUnitOfMeasurement, localValue);
+            lastValue = localValue;
+        }
+
+        Button* pressedBtn = whichButtonPressed();
+        if(pressedBtn != NULL) { // if any button is actually pressed
+            switch (pressedBtn->pin) { // this is basically a way to write a bunch of elifs super efficiently
+                case BUTTON1:
+                    localValue--;
+                    if (localValue < 0) localValue = maxValue - 1;
+                    break;
+                
+                case BUTTON2:
+                    localValue++;
+                    if (localValue >= maxValue) localValue = 0;
+                    break;
+
+                case BUTTON5:
+                    unitSet = true;
+                    break;
+            }
+            delay(100); //small delay
+        }
+    }
+
+    result.updatedValue = localValue;
+    result.unitFinished = true;
+    return result;
+}
+
+void setClockTime() {
+    resetScreen();
+    tft.setTextSize(3);
+    tft.print("Welcome User!");
+    delay(500);
+    for(int i = 0; i < timeUnitsListSize; i++) {
+        bool currentTimeUnitSet = false;
+
+        while(!currentTimeUnitSet) {
+            switch(i){
+                case 0: {
+                    SetupResult report = chooseSetUnitOfTime(hours, "Hour", HOURS);
+                    hours = report.updatedValue;
+                    currentTimeUnitSet = report.unitFinished;
+                    break;
+                }
+                case 1: {
+                    SetupResult report = chooseSetUnitOfTime(minutes, "Minutes", MINUTES);
+                    minutes = report.updatedValue;
+                    currentTimeUnitSet = report.unitFinished;
+                    break;
+                }
+                case 2: {
+                    SetupResult report = chooseSetUnitOfTime(seconds, "Seconds", SECONDS);
+                    seconds = report.updatedValue;
+                    currentTimeUnitSet = report.unitFinished;
+                    break;
+                }
+            }
+        }
+        resetScreen();
+        delay(10);
+    }
+    timeSet = true;
+
+    if(timeSet) {
+        setupComplete = true;
+        resetScreen();
     }
 }
 
@@ -131,8 +283,7 @@ void setup() {
 
     pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_BL, LOW);
-
-
+    
     for (int i = 0; i < NUM_BUTTONS; i++) {
         pinMode(clockButtons[i].pin, INPUT_PULLUP);
     }
@@ -144,15 +295,16 @@ void setup() {
 
     tft.fillScreen(ST77XX_BLACK);
 
-    tft.setTextColor(ST77XX_WHITE);
-    tft.setTextSize(5);
-    tft.setCursor(10,10);
-    tft.print("CLOCK");
+    setClockTime();
 
-    clockTicker.attach(1.0, clockTick);
+    clockTicker.attach(1.0, clockTick); //start the clock ticking
 }
 
 void loop() {
+    if (!setupComplete) { //if setupComplete returns as false, don't run the rest of code in the loop function
+        return; 
+    }
+
     displayClock();
 
     bool currentModeBtnState = digitalRead(BUTTON1);
