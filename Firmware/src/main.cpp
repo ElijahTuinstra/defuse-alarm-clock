@@ -73,26 +73,35 @@ struct Button {
     uint8_t pin;
     bool lastState;
     const char* name;
+    unsigned long lastPressed; //creates timer for each button so it can have it's own debounce tracker/timer
 };
 
 Button clockButtons[] = {
-    {BUTTON1, HIGH, "Button 1"},
-    {BUTTON2, HIGH, "Button 2"},
-    {BUTTON3, HIGH, "Button 3"},
-    {BUTTON4, HIGH, "Button 4"},
-    {BUTTON5, HIGH, "Button 5"}
+    {BUTTON1, HIGH, "Button 1", 0},
+    {BUTTON2, HIGH, "Button 2", 0},
+    {BUTTON3, HIGH, "Button 3", 0},
+    {BUTTON4, HIGH, "Button 4", 0},
+    {BUTTON5, HIGH, "Button 5", 0}
 };
 
 const int NUM_BUTTONS = sizeof(clockButtons) / sizeof(clockButtons[0]);
 
-
 bool buttonPressed(Button& button) {
     bool currentState = digitalRead(button.pin);
     bool triggered = false;
+    unsigned long now = millis();
 
     if (currentState == LOW && button.lastState == HIGH) {
-        triggered = true;
-        delay(50);
+        if(now - button.lastPressed >= 50) { //if it's been at least 50 milliseconds since the last button press
+            triggered = true;           
+            button.lastPressed = now;
+        }
+
+    }  else if (currentState == LOW && button.lastState == LOW) {
+        if(now - button.lastPressed >= 200) { //if it's been at least 200 milliseconds since the last button press
+            button.lastPressed = now;
+            triggered = true;
+        }
     }
 
     button.lastState = currentState;
@@ -166,15 +175,19 @@ void changeClockMode() {
 SetupResult chooseSetUnitOfTime(int valueOfUnitOfMeasurement, const char* labelUnitOfMeasurement, Mode targetedMode) {
     SetupResult result;
 
-    resetScreen();
+    tft.fillScreen(ST77XX_BLACK);
+    tft.setCursor(0,0);
     tft.setTextSize(1);
     tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
     tft.printf("Set %s. 1 to decrease, 2 to increase, 5 to confirm.", labelUnitOfMeasurement);
-    tft.println(); 
-    tft.println();    
+    tft.println(); //move down to next line below the first lines of text
+    tft.println(); //move down another line to create a buffer between next text printed, and the text that's already printed
     int cursorX = tft.getCursorX();
     int cursorY = tft.getCursorY();
-
+    tft.setTextSize(3);
+    tft.printf("%s:", labelUnitOfMeasurement);
+    cursorX = tft.getCursorX();
+    cursorY = tft.getCursorY();
 
     int maxValue = 60;
     int lastValue = -1;
@@ -203,10 +216,11 @@ SetupResult chooseSetUnitOfTime(int valueOfUnitOfMeasurement, const char* labelU
     bool unitSet = false;
     while(!unitSet){
         if(localValue != lastValue) {
+            tft.fillRect(cursorX, cursorY, 76, 284-cursorY, ST77XX_BLACK); //create rectangle that covers the bottom text, basically erasing it
             tft.setCursor(cursorX, cursorY);
             tft.setTextSize(3);
             tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-            tft.printf("%s:%02d    ", labelUnitOfMeasurement, localValue);
+            tft.printf("%02d", localValue);
             lastValue = localValue;
         }
 
