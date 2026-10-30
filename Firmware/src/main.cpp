@@ -18,6 +18,8 @@
 #define BUTTON4 4
 #define BUTTON5 5
 
+#define ST77XX_GRAY 0x8410 //apparently GRAY isn't in the normal ST77XX so I had to define it here.
+
 bool pastBM1 = HIGH; //past button mode 1
 
 class MyST7789 : public Adafruit_ST7789 {
@@ -80,6 +82,8 @@ struct returnValueAndStatus {
 
 
 Ticker clockTicker;
+Ticker cd_ClockTicker;
+volatile int totalSeconds = 0;
 
 void clockTick() {
   seconds++; //add a second to clock
@@ -94,6 +98,10 @@ void clockTick() {
       }
     }
   }
+}
+
+void cd_ClockTick() {
+    totalSeconds--;
 }
 
 struct Button {
@@ -136,8 +144,8 @@ bool buttonPressed(Button& button) {
 }
 
 bool anyButtonPressed() {
-  for (int i = 0; i < NUM_BUTTONS; i++) {
-    if (buttonPressed(clockButtons[i])) {
+  for(int i = 0; i < NUM_BUTTONS; i++) {
+    if(buttonPressed(clockButtons[i])) {
       return true;
     }
   }
@@ -145,8 +153,8 @@ bool anyButtonPressed() {
 }
 
 Button* whichButtonPressed() {
-  for (int i = 0; i < NUM_BUTTONS; i++) {
-    if (buttonPressed(clockButtons[i])) {
+  for(int i = 0; i < NUM_BUTTONS; i++) {
+    if(buttonPressed(clockButtons[i])) {
       return &clockButtons[i];
     }
   } 
@@ -521,7 +529,7 @@ void setAlarmTime(int alarmNumber) {
     }    
 }
 
-void setCountdownAlarmTimeHour(int alarmNumber) {
+int countdownAlarm() {
     resetScreen();
 
     int localAlarmHour = 0;
@@ -553,30 +561,253 @@ void setCountdownAlarmTimeHour(int alarmNumber) {
                 }
             }
         }
-        if(alarmNumber == 1) {
-            alarmHour1 = localAlarmHour;
-            alarmMinute1 = localAlarmMinute;
-            alarmSecond1 = localAlarmSecond;
-        } else if(alarmNumber == 2) {
-            alarmHour2 = localAlarmHour;
-            alarmMinute2 = localAlarmMinute;
-            alarmSecond2 = localAlarmSecond;
+    }
+
+    countdownAlarmHour = localAlarmHour;
+    countdownAlarmMinute = localAlarmMinute;
+    countdownAlarmSecond = localAlarmSecond;
+
+    volatile int totalSeconds = ((localAlarmHour * 3600) + (localAlarmMinute * 60) + localAlarmSecond);
+
+    delay(10);
+
+    bool arm_yes_no = false;
+    bool decision_made = false;
+    bool current_decision = true;
+    bool last_decision = false;
+
+    tft.fillScreen(ST77XX_RED);
+    tft.setCursor(0,0);
+    tft.setTextColor(ST77XX_WHITE, ST77XX_RED); 
+    tft.setTextSize(1);
+    tft.print("ARM?");
+    tft.println();
+
+    int answer_cursorX = tft.getCursorX();
+    int answer_cursorY = tft.getCursorY();
+    
+    while(!decision_made) {
+        if(current_decision != last_decision) {
+            if(current_decision) {
+                tft.setCursor(answer_cursorX, answer_cursorY);
+                tft.setTextSize(3);
+                tft.print("YES");
+            } else {
+                tft.setCursor(answer_cursorX, answer_cursorY);
+                tft.setTextSize(3);
+                tft.print("NO");
+            }
         }
 
-        resetScreen();
-        delay(10);
+        Button* pressedBtn = whichButtonPressed;
+        if(pressedBtn != NULL) {
+            switch (pressedBtn->pin) {
+                case BUTTON1: {
+                    current_decision = !current_decision;
+                    break;
+                }
+
+                case BUTTON5: {
+                    arm_yes_no = current_decision;
+                    completeResetScreen();
+                    decision_made = true;
+                    break;
+                }
+            }
+        }
     }
-    timeSet = true;
 
-    if(timeSet) {
-        setupComplete = true;
-        resetScreen();
+    if(!arm_yes_no) {
+        justPrintTheClock();
+        processGoing = false;
+        return 0;
+    }
 
-    }    
-}
+    for(i = 0; i < 3; i++) {
+        tft.fillScreen(ST77XX_RED);
+        tft.setCursor(0,0);
+        tft.setTextColor(ST77XX_WHITE, ST77XX_RED); 
+        tft.setTextSize(4);
+        tft.print("ARMED");
+        delay(300);
+        completeResetScreen();
+        delay(300);
+    }
 
-void setAlarmCountdown() {
-    tft.print("Nuh uh this isn't ready yet silly");
+    cd_ClockTicker.attach(1.0, cd_ClockTick);
+
+    int cd_lastTotalSecond = 0;
+    int cd_seconds = 0;
+    int cd_minutes = 0;
+    int cd_hours = 0;
+    int cd_lastseconds = -1;
+    int cd_lastminutes = -1;
+    int cd_lasthours = -1;
+
+    cd_hours = totalSeconds / 3600; //NOTE: CHECK IF THIS CALCULATES TIME PROPERLY LATER PLS
+    cd_minutes = ((totalSeconds % 3600) / 60);
+    cd_seconds = totalSeconds % 60;
+
+    tft.setCursor(10, 10);
+    tft.setTextColor(ST77XX_WHITE, ST77XX_RED);
+    tft.setTextSize(4);
+
+    int hours_cursorX = tft.getCursorX();
+    int hours_cursorY = tft.getCursorY();
+    tft.printf("%02d:", cd_hours);
+
+    int minutes_cursorX = tft.getCursorX();
+    int minutes_cursorY = tft.getCursorY();
+    tft.printf("%02d:", cd_minutes);
+
+    int seconds_cursorX = tft.getCursorX();
+    int seconds_cursorY = tft.getCursorY();
+
+    int code_length = 5; //length of code
+    int code[code_length];
+    for(int i = 0; i<code_length; i++) {
+        code[i] = random(1, 6);
+    }
+
+    tft.printf("%02d", cd_seconds);
+
+    int focused_digit = 0;
+
+    tft.setTextColor(ST77XX_WHITE, ST77XX_RED);
+    tft.setTextSize(3);
+    tft.print("Code:[");
+    int digit_cursorY = tft.getCursorY();
+    int digit1_cursorX = tft.getCursorX();
+    tft.setTextColor(ST77XX_GREEN, ST77XX_RED);
+    tft.print("  ");
+    int digit2_cursorX = tft.getCursorX();
+    tft.setTextColor(ST77XX_WHITE, ST77XX_RED);
+    tft.setTextSize(4);
+    tft.printf("%1d", code[focused_digit]);
+    int digit3_cursorX = tft.getCursorX();
+    tft.setTextColor(ST77XX_GRAY, ST77XX_RED);
+    tft.setTextSize(3);
+    tft.printf("%1d", code[(focused_digit+1)]);
+
+    bool new_input = false;
+    bool defused = false;
+    int current_input_digit = 0;
+
+    while((totalSeconds > 0) && (!defused)) {
+        if (cd_lastTotalSecond != totalSeconds){
+            tft.setCursor(10, 10);
+            tft.setTextColor(ST77XX_RED, ST77XX_BLACK);
+            tft.setTextSize(4);
+
+            cd_hours = totalSeconds / 3600; //NOTE: CHECK IF THIS CALCULATES TIME PROPERLY LATER PLS
+            cd_minutes = ((totalSeconds % 3600) / 60);
+            cd_seconds = totalSeconds % 60;
+
+            if(cd_lasthours != cd_hours){
+                tft.setCursor(hours_cursorX, hours_cursorY);
+                tft.printf("%02d", cd_hours);
+            }
+
+            if(cd_lastminutes != cd_minutes){
+                tft.setCursor(minutes_cursorX, minutes_cursorY);
+                tft.printf("%02d", cd_minutes);
+            }
+
+            if(cd_lastseconds != cd_seconds){
+                tft.setCursor(seconds_cursorX, seconds_cursorY);
+                tft.printf("%02d", cd_seconds);
+            }
+
+            cd_lasthours = cd_hours;
+            cd_lastminutes = cd_minutes;
+            cd_lastseconds = cd_seconds;
+            cd_lastTotalSecond = totalSeconds;
+        }
+        if(pressedBtn != NULL) {
+            switch (pressedBtn->pin) {
+                case BUTTON1: {
+                    current_input_digit = 1;
+                    new_input = true;
+                    break;
+                }
+                case BUTTON2: {
+                    current_input_digit = 2;
+                    new_input = true;
+                    break;
+                }
+                case BUTTON3: {
+                    current_input_digit = 3;
+                    new_input = true;
+                    break;
+                }
+                case BUTTON4: {
+                    current_input_digit = 4;
+                    new_input = true;
+                    break;
+                }
+                case BUTTON5: {
+                    current_input_digit = 5;
+                    new_input = true;
+                    break;
+                }
+            }
+        }
+        if(new_input){
+            if ((current_input_digit == code[focused_digit]) && (focused_digit < (code_length-1))){
+                focused_digit++;
+                tft.setTextSize(3);
+                tft.setCursor(digit1_cursorX, digit_cursorY);
+                tft.setTextColor(ST77XX_GREEN, ST77XX_RED);
+                tft.print("%1d", code[(focused_digit-1)]);
+
+                tft.setCursor(digit2_cursorX, digit_cursorY);
+                tft.setTextColor(ST77XX_WHITE, ST77XX_RED);
+                tft.setTextSize(4);
+                tft.print("%1d", code[focused_digit]);
+
+                tft.setCursor(digit3_cursorX, digit_cursorY);
+                tft.setTextColor(ST77XX_GRAY, ST77XX_RED);
+                tft.setTextSize(3);
+                tft.print("%1d", code[(focused_digit+1)]);
+
+            } else if ((current_input_digit = code[focused_digit]) && (focused_digit = (code_length-1))) {
+                defused = true;
+            }
+            new_input = false;
+        }
+    }
+
+    cd_ClockTicker.detach();
+    
+    if(defused) {
+        for(int i = 0; i < 3; i++) {
+            tft.fillScreen(ST77XX_GREEN);
+            tft.setCursor(0,0);
+            tft.setTextColor(ST77XX_WHITE, ST77XX_GREEN); 
+            tft.setTextSize(4);
+            tft.print("DISARMED");
+            delay(300);
+            completeResetScreen();
+            delay(300);
+        }
+        justPrintTheClock();
+        processGoing = false;
+        return 1;
+    } else if ((!defused) && (!(totalSeconds > 0))) {
+        triggerBuzzer = true;
+        for(i = 0; i < 3; i++) {
+            tft.fillScreen(ST77XX_RED);
+            tft.setCursor(0,0);
+            tft.setTextColor(ST77XX_WHITE, ST77XX_RED); 
+            tft.setTextSize(4);
+            tft.print("DEFUSAL FAILED");
+            delay(300);
+            completeResetScreen();
+            delay(300);
+        }
+        delay(500);
+        return 2;
+    }
 }
 
 void turnAlarmOnOrOff(int alarmNumber, bool turnOnOrOff) {
@@ -596,7 +827,7 @@ void setup() {
     pinMode(BUZZER, OUTPUT);
     digitalWrite(BUZZER, LOW);
     
-    for (int i = 0; i < NUM_BUTTONS; i++) {
+    for(int i = 0; i < NUM_BUTTONS; i++) {
         pinMode(clockButtons[i].pin, INPUT_PULLUP);
     }
 
@@ -613,7 +844,7 @@ void setup() {
 }
 
 void loop() {
-    if (!setupComplete) { //if still in the middle of setup (like setting the time), skip over rest of code in loop
+    if(!setupComplete) { //if still in the middle of setup (like setting the time), skip over rest of code in loop
         return;
     }
 
@@ -660,7 +891,8 @@ void loop() {
             }
 
             case BUTTON3: {
-                setAlarmCountdown();
+                processGoing = true;
+                beh_beh = countdownAlarm();
                 break;
             }
             
@@ -687,14 +919,8 @@ void loop() {
         }
     }
 
-    if(countdownAlarmActive) {
-        if(hours == alarmHour1 && minutes == alarmMinute1 && seconds == alarmSecond1) {
-            triggerBuzzer = true;
-        }
-    } 
-
     if(triggerBuzzer) {
-        //digitalWrite(BUZZER, HIGH); disabled for now so buzzer doesn't bug me while I'm testing the clock
+        digitalWrite(BUZZER, HIGH); //disabled for now so buzzer doesn't bug me while I'm testing the clock
         triggerBuzzer = false;
     }
 
