@@ -86,13 +86,13 @@ Ticker cd_ClockTicker;
 volatile int totalSeconds = 0;
 
 void clockTick() {
-  seconds++; //add a second to clock
+  seconds = seconds + 1; //add a second to clock
   if (seconds >= 60) {
     seconds = 0;
-    minutes++;
+    minutes = minutes + 1;
     if (minutes >= 60) {
       minutes = 0;
-      hours++;
+      hours = hours + 1;
       if (hours >= 24) {
         hours = 0;
       }
@@ -101,7 +101,7 @@ void clockTick() {
 }
 
 void cd_ClockTick() {
-    totalSeconds--;
+    totalSeconds = totalSeconds - 1;
 }
 
 struct Button {
@@ -586,6 +586,7 @@ int countdownAlarm() {
     int answer_cursorX = tft.getCursorX();
     int answer_cursorY = tft.getCursorY();
     
+    Button* pressedBtn = whichButtonPressed();
     while(!decision_made) {
         if(current_decision != last_decision) {
             if(current_decision) {
@@ -599,7 +600,7 @@ int countdownAlarm() {
             }
         }
 
-        Button* pressedBtn = whichButtonPressed;
+
         if(pressedBtn != NULL) {
             switch (pressedBtn->pin) {
                 case BUTTON1: {
@@ -623,7 +624,7 @@ int countdownAlarm() {
         return 0;
     }
 
-    for(i = 0; i < 3; i++) {
+    for(int i = 0; i < 3; i++) {
         tft.fillScreen(ST77XX_RED);
         tft.setCursor(0,0);
         tft.setTextColor(ST77XX_WHITE, ST77XX_RED); 
@@ -758,17 +759,17 @@ int countdownAlarm() {
                 tft.setTextSize(3);
                 tft.setCursor(digit1_cursorX, digit_cursorY);
                 tft.setTextColor(ST77XX_GREEN, ST77XX_RED);
-                tft.print("%1d", code[(focused_digit-1)]);
+                tft.printf("%1d", code[(focused_digit-1)]);
 
                 tft.setCursor(digit2_cursorX, digit_cursorY);
                 tft.setTextColor(ST77XX_WHITE, ST77XX_RED);
                 tft.setTextSize(4);
-                tft.print("%1d", code[focused_digit]);
+                tft.printf("%1d", code[focused_digit]);
 
                 tft.setCursor(digit3_cursorX, digit_cursorY);
                 tft.setTextColor(ST77XX_GRAY, ST77XX_RED);
                 tft.setTextSize(3);
-                tft.print("%1d", code[(focused_digit+1)]);
+                tft.printf("%1d", code[(focused_digit+1)]);
 
             } else if ((current_input_digit = code[focused_digit]) && (focused_digit = (code_length-1))) {
                 defused = true;
@@ -795,7 +796,7 @@ int countdownAlarm() {
         return 1;
     } else if ((!defused) && (!(totalSeconds > 0))) {
         triggerBuzzer = true;
-        for(i = 0; i < 3; i++) {
+        for(int i = 0; i < 3; i++) {
             tft.fillScreen(ST77XX_RED);
             tft.setCursor(0,0);
             tft.setTextColor(ST77XX_WHITE, ST77XX_RED); 
@@ -808,6 +809,7 @@ int countdownAlarm() {
         delay(500);
         return 2;
     }
+    return 0;
 }
 
 void turnAlarmOnOrOff(int alarmNumber, bool turnOnOrOff) {
@@ -892,7 +894,8 @@ void loop() {
 
             case BUTTON3: {
                 processGoing = true;
-                beh_beh = countdownAlarm();
+                int beh_beh = countdownAlarm();
+                Serial.print(beh_beh);
                 break;
             }
             
