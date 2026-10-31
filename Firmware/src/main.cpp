@@ -5,12 +5,13 @@
 #include <Ticker.h>
 
 //Defines the pins
-#define TFT_SCLK 21 // SCL on display
-#define TFT_MOSI 20 // SDA on display
+#define TFT_SCLK 21 // SCL on display, TX on board
+#define TFT_MOSI 20 // SDA on display, RX on board
 #define TFT_RST 10
 #define TFT_DC 8
 #define TFT_CS 7
 #define TFT_BL 6
+
 #define BUZZER 0
 #define BUTTON1 1
 #define BUTTON2 2
@@ -567,9 +568,7 @@ int countdownAlarm() {
     countdownAlarmMinute = localAlarmMinute;
     countdownAlarmSecond = localAlarmSecond;
 
-    volatile int totalSeconds = ((localAlarmHour * 3600) + (localAlarmMinute * 60) + localAlarmSecond);
-
-    delay(10);
+    totalSeconds = ((localAlarmHour * 3600) + (localAlarmMinute * 60) + localAlarmSecond);
 
     bool arm_yes_no = false;
     bool decision_made = false;
@@ -589,13 +588,11 @@ int countdownAlarm() {
     while(!decision_made) {
         if(current_decision != last_decision) {
             if(current_decision) {
-                tft.setCursor(answer_cursorX, answer_cursorY);
+                tft.fillRect(0, 30, tft.width(), 30, ST77XX_RED);
                 tft.setTextSize(3);
-                tft.print("YES");
-            } else {
                 tft.setCursor(answer_cursorX, answer_cursorY);
-                tft.setTextSize(3);
-                tft.print("NO");
+                tft.print(current_decision ? "YES" : "NO");
+                last_decision = current_decision;
             }
         }
         Button* pressedBtn = whichButtonPressed();
@@ -667,10 +664,9 @@ int countdownAlarm() {
     for(int i = 0; i<code_length; i++) {
         code[i] = random(1, 6);
     }
+    int focused_digit = 0;
 
     tft.printf("%02d", cd_seconds);
-
-    int focused_digit = 0;
 
     tft.setTextColor(ST77XX_WHITE, ST77XX_RED);
     tft.setTextSize(3);
@@ -777,10 +773,9 @@ int countdownAlarm() {
         }
     }
 
-
+    cd_ClockTicker.detach();
     
     if(defused) {
-        cd_ClockTicker.detach();
         for(int i = 0; i < 3; i++) {
             tft.fillScreen(ST77XX_GREEN);
             tft.setCursor(0,0);
@@ -794,22 +789,24 @@ int countdownAlarm() {
         justPrintTheClock();
         processGoing = false;
         return 1;
-    } else if ((!defused) && (!(totalSeconds > 0))) {
-        triggerBuzzer = true;
-        for(int i = 0; i < 3; i++) {
-            tft.fillScreen(ST77XX_RED);
-            tft.setCursor(0,0);
-            tft.setTextColor(ST77XX_WHITE, ST77XX_RED); 
-            tft.setTextSize(4);
-            tft.print("DEFUSAL FAILED");
-            delay(300);
-            completeResetScreen();
-            delay(300);
-        }
-        delay(500);
-        return 2;
     }
-    return 0;
+
+    triggerBuzzer = true;
+    for(int i = 0; i < 3; i++) {
+        tft.fillScreen(ST77XX_RED);
+        tft.setCursor(0,0);
+        tft.setTextColor(ST77XX_WHITE, ST77XX_RED); 
+        tft.setTextSize(4);
+        tft.print("DEFUSAL FAILED");
+        delay(300);
+        completeResetScreen();
+        delay(300);
+    }
+    delay(200);
+    justPrintTheClock();
+    processGoing = false;
+
+    return 2;
 }
 
 void turnAlarmOnOrOff(int alarmNumber, bool turnOnOrOff) {
@@ -822,10 +819,13 @@ void turnAlarmOnOrOff(int alarmNumber, bool turnOnOrOff) {
 
 void setup() {
     Serial.begin(115200);
+    unsigned long t0 = millis();
+    while(!Serial && millis() - t0 < 5000) { delay(10); }
     delay(1000);
+    Serial.println("boot");
 
     pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, LOW); //display (for some weird reason) is active low, so setting it to low makes sure backlight is on
+    digitalWrite(TFT_BL, HIGH); //display (for some weird reason) is active low, so setting it to low makes sure backlight is on
     pinMode(BUZZER, OUTPUT);
     digitalWrite(BUZZER, LOW);
     
@@ -833,16 +833,27 @@ void setup() {
         pinMode(clockButtons[i].pin, INPUT_PULLUP);
     }
 
+    delay(500);
+
     tft.init(76, 284); //display size
+    Serial.println("init done");
     tft.setOffsets(82, 18);
     tft.invertDisplay(false);
     tft.setRotation(1);
+    delay(1000);
+    tft.fillScreen(ST77XX_RED);
 
     tft.fillScreen(ST77XX_BLACK);
+    Serial.println("cleared");
 
+    digitalWrite(TFT_BL, LOW);
+
+    Serial.println("setClockTime started");
     setClockTime();
+    Serial.println("setClockTime ended");
 
     clockTicker.attach(1.0, clockTick); //start the clock ticking
+    Serial.println("clockTicker Started");
 }
 
 void loop() {
